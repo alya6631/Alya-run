@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>هروب اليا - النسخة الكاملة النهائية</title>
+    <style>
+        * { box-sizing: border-box; touch-action: none; margin: 0; padding: 0; }
+        body { background: #000; overflow: hidden; font-family: sans-serif; color: white; }
+        canvas { display: block; background: #0a0a0a; }
+        #ui { position: absolute; top: 10px; width: 100%; display: none; justify-content: space-around; z-index: 10; font-weight: bold; pointer-events: none; }
+        .stat { background: rgba(255,0,85,0.2); padding: 8px 15px; border-radius: 10px; border: 1px solid #ff0055; text-shadow: 1px 1px #000; }
+        .screen { position: absolute; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; text-align: center; }
+        .btn { padding: 15px 40px; font-size: 20px; background: #ff0055; border: none; border-radius: 50px; color: #fff; cursor: pointer; margin-top: 20px; font-weight: bold; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="stat" id="rStat">الغارة: 1</div>
+    <div class="stat" id="tStat">الزعيم: 15s</div>
+    <div class="stat" id="hStat">❤️ 12</div>
+</div>
+
+<div id="menu" class="screen">
+    <h1 style="color: #ff0055; font-size: 45px; text-shadow: 0 0 15px #ff0055;">هروب اليا 🏃‍♀️</h1>
+    <p>كل الميزات والقدرات والوحوش تعمل الآن!</p>
+    <button class="btn" onclick="start()">بدء المهمة الكاملة</button>
+</div>
+
+<div id="win" class="screen" style="display: none;">
+    <h1 style="color: gold; font-size: 40px;">🎉 نصر أسطوري 🎉</h1>
+    <a href="https://mega.nz/file/CqJUlBxQ#EdKguutwhS8hsHqF5Y3eNQx0l4Kp5T2Q2x1tDXnsjmo" target="_blank" class="btn" style="background: #00ff88; color: #000;">🎁 استلم هديتك السرية</a>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const cvs = document.getElementById("game"), ctx = cvs.getContext("2d");
+let game = { active: false, raid: 1, timer: 15, shake: 0 };
+let player = { x: 0, y: 0, hp: 12, inv: 0, speed: 7, freeze: 0, canShoot: true };
+let enemies = [], bosses = [], bullets = [], projs = [];
+let tM = { active: false, sx: 0, sy: 0, cx: 0, cy: 0, id: null };
+let tA = { active: false, sx: 0, sy: 0, cx: 0, cy: 0, id: null };
+
+const bossLib = [
+    {n: "المتسلل", hp: 400, c: "#f00", type: "dash"},
+    {n: "العملاق المزلزل", hp: 1500, c: "#f80", type: "quake"},
+    {n: "المراوغ السريع", hp: 1000, c: "#0ff", type: "dash"}, 
+    {n: "الشبح المتخفي", hp: 1200, c: "#fff", type: "vanish"},
+    {n: "المستهدف الناري", hp: 1400, c: "#0f0", type: "sniper"},
+    {n: "المشتت الصامت", hp: 1600, c: "#f0f", type: "silence"},
+    {n: "المدرع الفولاذي", hp: 2500, c: "#532", type: "tank"},
+    {n: "الساحر الغامض", hp: 3000, c: "#9b5", type: "sniper"},
+    {n: "سيد الظلام", hp: 4000, c: "#222", type: "vanish"},
+    {n: "الزعيم النهائي", hp: 8000, c: "#fff", type: "final"}
+];
+
+function start() {
+    cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+    player.x = cvs.width/2; player.y = cvs.height/2;
+    game.active = true;
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("ui").style.display = "flex";
+    setInterval(() => { if(game.active && bosses.length === 0) spawnE(); }, 1000);
+    loop();
+}
+
+function spawnE() {
+    const sides = [
+        {x: Math.random()*cvs.width, y: -30}, {x: Math.random()*cvs.width, y: cvs.height+30},
+        {x: -30, y: Math.random()*cvs.height}, {x: cvs.width+30, y: Math.random()*cvs.height}
+    ];
+    let pos = sides[Math.floor(Math.random()*4)];
+    let r = Math.random();
+    let e = { x: pos.x, y: pos.y, spd: 3, name: "متحرش", color: "#3f3", type: "norm" };
+    
+    if(r < 0.2) { e.name="سريع⚡"; e.color="#ff0"; e.spd=5.5; e.type="fast"; }
+    else if(r > 0.8) { e.name="مسمم🤮"; e.color="#a0f"; e.spd=2; e.type="tox"; }
+    
+    enemies.push(e);
+}
+
+// التحكم باللمس
+window.addEventListener("touchstart", e => {
+    for(let t of e.changedTouches) {
+        if(t.clientX < cvs.width/2) { tM.id=t.identifier; tM.sx=tM.cx=t.clientX; tM.sy=tM.cy=t.clientY; tM.active=true; }
+        else { tA.id=t.identifier; tA.sx=tA.cx=t.clientX; tA.sy=tA.cy=t.clientY; tA.active=true; }
+    }
+});
+window.addEventListener("touchmove", e => { e.preventDefault(); for(let t of e.touches) {
+    if(t.identifier === tM.id) { tM.cx=t.clientX; tM.cy=t.clientY; }
+    if(t.identifier === tA.id) { tA.cx=t.clientX; tA.cy=t.clientY; }
+}}, {passive: false});
+window.addEventListener("touchend", e => { for(let t of e.changedTouches) {
+    if(t.identifier === tM.id) tM.active=false; if(t.identifier === tA.id) tA.active=false;
+}});
+
+function loop() {
+    if(!game.active) return;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,cvs.width, cvs.height);
+    if(game.shake > 0) { ctx.translate(Math.random()*10-5, Math.random()*10-5); game.shake--; }
+
+    // اليا
+    if(tM.active && player.freeze <= 0) {
+        let dx = tM.cx-tM.sx, dy = tM.cy-tM.sy, d = Math.hypot(dx,dy)||1;
+        player.x = Math.max(15, Math.min(cvs.width-15, player.x + (dx/d)*player.speed));
+        player.y = Math.max(15, Math.min(cvs.height-15, player.y + (dy/d)*player.speed));
+    }
+    if(player.freeze > 0) player.freeze--;
+    ctx.fillStyle = "#ff69b4"; ctx.fillRect(player.x-15, player.y-15, 30, 30);
+    ctx.fillStyle = "#fff"; ctx.textAlign="center"; ctx.fillText("اليا", player.x, player.y-25);
+    if(player.inv > 0) player.inv--;
+
+    // الزعماء
+    if(bosses.length > 0) {
+        let b = bosses[0];
+        let d = Math.hypot(player.x-b.x, player.y-b.y);
+        if(!b.tired) {
+            b.st -= 0.016;
+            if(b.type === "dash" && Date.now()%2000 < 20) { b.vx=(player.x-b.x)/10; b.vy=(player.y-b.y)/10; b.dashT=20; }
+            if(b.dashT > 0) { b.x += b.vx; b.y += b.vy; b.dashT--; }
+            else { b.x += (player.x-b.x)/d*2.8; b.y += (player.y-b.y)/d*2.8; }
+            if(b.type === "quake" && Date.now()%3000 < 20) { game.shake=50; player.freeze=60; }
+            if(b.type === "sniper" && Date.now()%1000 < 20) projs.push({x:b.x, y:b.y, vx:(player.x-b.x)/40, vy:(player.y-b.y)/40});
+            if(b.type === "vanish" && Date.now()%4000 < 20) { b.x=player.x; b.y=player.y-180; }
+            if(b.type === "silence") player.canShoot = false;
+            if(b.st <= 0) { b.tired=true; b.rec=6; player.canShoot=true; }
+        } else {
+            b.rec -= 0.016; b.x += (player.x-b.x)/d*1.2; b.y += (player.y-b.y)/d*1.2;
+            if(b.rec <= 0) { b.tired=false; b.st=10; }
+        }
+        ctx.fillStyle = b.tired?"#fff":b.c; ctx.globalAlpha = b.tired?1:0.4;
+        ctx.fillRect(b.x-45, b.y-45, 90, 90); ctx.globalAlpha = 1;
+        ctx.fillStyle="#fff"; ctx.fillText(b.n + (b.tired?" (تعب!)":""), b.x, b.y-60);
+        if(d < 55 && player.inv <= 0) { player.hp--; player.inv=60; }
+    } else {
+        game.timer -= 0.016;
+        if(game.timer <= 0) {
+            let bd = bossLib[game.raid-1];
+            bosses.push({...bd, x: cvs.width/2, y: -100, tired: false, st: 12, rec: 0, dashT: 0});
+            enemies = [];
+        }
+    }
+
+    // الأعداء العاديين
+    enemies.forEach((e, i) => {
+        let d = Math.hypot(player.x-e.x, player.y-e.y);
+        e.x += (player.x-e.x)/d*e.spd; e.y += (player.y-e.y)/d*e.spd;
+        ctx.fillStyle = e.color; ctx.fillRect(e.x-15, e.y-15, 30, 30);
+        ctx.fillStyle="#fff"; ctx.fillText(e.name, e.x, e.y-22);
+        if(d < 30 && player.inv <= 0) { 
+            player.hp--; player.inv=60; 
+            if(e.type === "tox") { player.speed=2.5; setTimeout(()=>player.speed=7, 2000); }
+        }
+    });
+
+    // الرصاص والمقذوفات
+    if(tA.active && player.canShoot && Date.now()%150<20) {
+        let dx = tA.cx-tA.sx, dy = tA.cy-tA.sy, d = Math.hypot(dx,dy)||1;
+        bullets.push({x: player.x, y: player.y, vx: (dx/d)*13, vy: (dy/d)*13});
+    }
+    bullets.forEach((b, bi) => {
+        b.x += b.vx; b.y += b.vy; ctx.fillStyle="#0ff"; ctx.fillRect(b.x-3, b.y-3, 6, 6);
+        enemies.forEach((e, ei) => { if(Math.hypot(b.x-e.x, b.y-e.y)<25) { enemies.splice(ei,1); bullets.splice(bi,1); } });
+        if(bosses.length>0 && bosses[0].tired) {
+            let bz = bosses[0];
+            if(b.x > bz.x-45 && b.x < bz.x+45 && b.y > bz.y-45 && b.y < bz.y+45) {
+                bz.hp -= 25; bullets.splice(bi, 1);
+                if(bz.hp <= 0) { bosses=[]; game.raid++; game.timer=15; projs=[]; }
+            }
+        }
+    });
+    projs.forEach((p, i) => {
+        p.x += p.vx; p.y += p.vy; ctx.fillStyle="red"; ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, 7); ctx.fill();
+        if(Math.hypot(player.x-p.x, player.y-p.y)<20 && player.inv<=0) { player.hp--; player.inv=60; projs.splice(i,1); }
+    });
+
+    if(player.hp <= 0) { alert("أمسكوا باليا!"); location.reload(); }
+    if(game.raid > 10) { game.active=false; document.getElementById("win").style.display="flex"; }
+    
+    document.getElementById("rStat").innerText = "الغارة: " + game.raid;
+    document.getElementById("tStat").innerText = bosses.length>0 ? (bosses[0].tired?"اضربي!":"منيع") : "الوحش: "+Math.ceil(game.timer);
+    document.getElementById("hStat").innerText = "❤️ " + player.hp;
+    requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
